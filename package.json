@@ -1,17 +1,19 @@
 
 {
   "name": "netpulse-pro",
-  "version": "3.0.0",
-  "description": "Professional Network Diagnostic Terminal",
+  "version": "3.1.0",
+  "description": "Aggressive Performance Network Diagnostic Terminal",
   "author": "Network Admin",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "dist": "electron-builder --windows"
+    "build": "esbuild index.tsx --bundle --minify --outfile=dist/bundle.js --platform=browser --define:process.env.API_KEY='\"'${API_KEY}'\"'",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --windows"
   },
   "devDependencies": {
     "electron": "^25.0.0",
-    "electron-builder": "^24.0.0"
+    "electron-builder": "^24.0.0",
+    "esbuild": "^0.19.0"
   },
   "build": {
     "appId": "com.netpulse.pro",
@@ -23,11 +25,13 @@
       "requestedExecutionLevel": "requireAdministrator"
     },
     "directories": {
-      "output": "dist"
+      "output": "dist_exe"
     },
     "files": [
-      "**/*",
-      "!dist/*"
+      "dist/bundle.js",
+      "index.html",
+      "main.js",
+      "package.json"
     ]
   }
 }
