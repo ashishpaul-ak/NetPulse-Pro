@@ -6,8 +6,8 @@
   "author": "Network Admin",
   "main": "main.js",
   "scripts": {
-    "prebuild": "mkdir dist -ErrorAction SilentlyContinue || true",
-    "build": "esbuild index.tsx --bundle --minify --outfile=dist/bundle.js --platform=browser --define:process.env.NODE_ENV='\"production\"' --define:process.env.API_KEY='\"'${API_KEY}'\"'",
+    "prebuild": "node -e \"const fs = require('fs'); if (!fs.existsSync('dist')) fs.mkdirSync('dist');\"",
+    "build": "npm run prebuild && esbuild index.tsx --bundle --minify --outfile=dist/bundle.js --platform=browser --define:process.env.NODE_ENV='\"production\"' --define:process.env.API_KEY='\"'${API_KEY}'\"'",
     "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder --windows"
   },

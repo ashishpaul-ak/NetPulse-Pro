@@ -12,22 +12,24 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      webSecurity: false // Necessary for local file access in this diagnostic context
+      webSecurity: false 
     }
   });
 
-  // Load the local index.html
   win.loadFile('index.html');
   win.setMenuBarVisibility(false);
-  
-  // Open dev tools automatically if in development
-  // win.webContents.openDevTools();
 }
+
+// Global set to track active ping processes to prevent leaks
+const activePings = new Set();
 
 ipcMain.handle('node:ping', async (event, ip) => {
   return new Promise((resolve) => {
-    // Aggressive timeout (800ms) to keep UI responsive
-    exec(`ping -n 1 -w 800 ${ip}`, (error, stdout) => {
+    // Windows ping command: -n 1 (one packet), -w 800 (800ms timeout)
+    // We add a safety timeout to the child process itself
+    const child = exec(`ping -n 1 -w 800 ${ip}`, { timeout: 1000 }, (error, stdout) => {
+      activePings.delete(child);
+      
       if (error || !stdout) {
         resolve({ rtt: 0, status: 'dead' });
         return;
@@ -37,14 +39,21 @@ ipcMain.handle('node:ping', async (event, ip) => {
       if (match) {
         resolve({ rtt: parseInt(match[1]), status: 'alive' });
       } else {
+        // Handle "Destination host unreachable" or "Request timed out" in stdout
         resolve({ rtt: 0, status: 'dead' });
       }
     });
+
+    activePings.add(child);
   });
 });
 
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
+  // Cleanup any lingering ping processes on exit
+  for (const child of activePings) {
+    child.kill();
+  }
   if (process.platform !== 'darwin') app.quit();
 });
