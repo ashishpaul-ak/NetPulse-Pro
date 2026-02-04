@@ -39,7 +39,7 @@ ipcMain.handle('node:ping', async (event, ip) => {
         return;
       }
       
-      // regex handles "time=15ms", "time<1ms", "time=1ms"
+      // regex handles Windows output: "time=15ms", "time<1ms", "time=1ms"
       const match = stdout.match(/time[=<](\d+)ms/i);
       
       if (match) {
@@ -57,9 +57,13 @@ ipcMain.handle('node:ping', async (event, ip) => {
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
-  // CRITICAL: Prevent "zombie" processes by killing all active pings on exit
+  // CRITICAL: Prevent system crash by killing all active pings on exit
   for (const child of activePings) {
-    try { child.kill(); } catch (e) {}
+    try {
+      child.kill('SIGTERM');
+    } catch (e) {
+      // Process might already be dead
+    }
   }
   if (process.platform !== 'darwin') app.quit();
 });
