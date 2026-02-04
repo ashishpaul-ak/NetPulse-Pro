@@ -6,9 +6,16 @@
   "author": "Network Admin",
   "main": "main.js",
   "scripts": {
-    "build": "esbuild index.tsx --bundle --minify --outfile=dist/bundle.js --platform=browser --define:process.env.API_KEY='\"'${API_KEY}'\"'",
+    "prebuild": "mkdir dist -ErrorAction SilentlyContinue || true",
+    "build": "esbuild index.tsx --bundle --minify --outfile=dist/bundle.js --platform=browser --define:process.env.NODE_ENV='\"production\"' --define:process.env.API_KEY='\"'${API_KEY}'\"'",
     "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder --windows"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "recharts": "^2.12.7",
+    "@google/genai": "^1.39.0"
   },
   "devDependencies": {
     "electron": "^25.0.0",
