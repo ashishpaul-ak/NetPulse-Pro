@@ -1,7 +1,7 @@
 
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -25,21 +25,27 @@ const activePings = new Set();
 
 ipcMain.handle('node:ping', async (event, ip) => {
   return new Promise((resolve) => {
-    // Windows ping command: -n 1 (one packet), -w 800 (800ms timeout)
-    // We add a safety timeout to the child process itself
-    const child = exec(`ping -n 1 -w 800 ${ip}`, { timeout: 1000 }, (error, stdout) => {
+    // Basic sanitization of the input
+    const cleanIp = String(ip).trim().split(' ')[0];
+
+    // Using execFile for lower overhead and better security
+    // -n 1: 1 packet
+    // -w 800: 800ms timeout
+    const child = execFile('ping', ['-n', '1', '-w', '800', cleanIp], { timeout: 1200 }, (error, stdout) => {
       activePings.delete(child);
       
-      if (error || !stdout) {
+      if (!stdout) {
         resolve({ rtt: 0, status: 'dead' });
         return;
       }
       
-      const match = stdout.match(/time[=<](\d+)ms/);
+      // regex handles "time=15ms", "time<1ms", "time=1ms"
+      const match = stdout.match(/time[=<](\d+)ms/i);
+      
       if (match) {
-        resolve({ rtt: parseInt(match[1]), status: 'alive' });
+        const rtt = parseInt(match[1], 10);
+        resolve({ rtt: rtt, status: 'alive' });
       } else {
-        // Handle "Destination host unreachable" or "Request timed out" in stdout
         resolve({ rtt: 0, status: 'dead' });
       }
     });
@@ -51,9 +57,9 @@ ipcMain.handle('node:ping', async (event, ip) => {
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
-  // Cleanup any lingering ping processes on exit
+  // CRITICAL: Prevent "zombie" processes by killing all active pings on exit
   for (const child of activePings) {
-    child.kill();
+    try { child.kill(); } catch (e) {}
   }
   if (process.platform !== 'darwin') app.quit();
 });

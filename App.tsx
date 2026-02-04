@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { GoogleGenAI } from "@google/genai";
 import { Header } from './components/Header';
 import { IPCard } from './components/IPCard';
 import { SummaryTable } from './components/SummaryTable';
@@ -8,7 +7,7 @@ import { DiagnosticPanel } from './components/DiagnosticPanel';
 import { IPNode, MonitorSettings, PingResult } from './types';
 import { parseBulkInput } from './utils/networkUtils';
 
-// Global check for Electron
+// Global check for Electron environment
 const isElectron = typeof window !== 'undefined' && (window as any).process && (window as any).process.type;
 const electron = isElectron ? (window as any).require('electron') : null;
 
@@ -22,13 +21,13 @@ const App: React.FC = () => {
   const [settings, setSettings] = useState<MonitorSettings>({
     interval: 2.0,
     warningThreshold: 150,
-    timeframe: 120, // Increased to 120 minutes as requested
+    timeframe: 120, // 120 minutes as requested
     statusColors: { alive: '#10b981', unstable: '#f59e0b', dead: '#ef4444' }
   });
 
   // Performance optimized ref to track if a tick is already running
   const isUpdatingRef = useRef(false);
-  // Ref to track nodes for the interval to avoid dependency loops
+  // Ref to track nodes for the interval to avoid expensive dependency array updates
   const nodesRef = useRef<IPNode[]>([]);
   
   useEffect(() => {
@@ -53,13 +52,18 @@ const App: React.FC = () => {
         return { timestamp: Date.now(), rtt: 0, status: 'dead' };
       }
     }
-    // Simulation fallback
+    // Simulation fallback for web preview
     const rtt = 10 + Math.random() * 40;
-    return { timestamp: Date.now(), rtt, status: 'alive' };
+    return { 
+      timestamp: Date.now(), 
+      rtt, 
+      status: rtt > settings.warningThreshold ? 'unstable' : 'alive' 
+    };
   }, [settings.warningThreshold]);
 
-  // STABLE MONITORING TICK: Uses nodesRef to avoid function re-creation
+  // STABLE MONITORING TICK: Uses batching to prevent CPU spikes
   const runMonitoringTick = useCallback(async () => {
+    // Prevention: If a tick is still running, skip this one. This prevents process piling.
     if (isUpdatingRef.current || nodesRef.current.length === 0) return;
     
     const monitoringNodes = nodesRef.current.filter(n => n.isMonitoring);
@@ -68,7 +72,7 @@ const App: React.FC = () => {
     isUpdatingRef.current = true;
 
     try {
-      // Ping in parallel batches of 5 to avoid CPU spikes and OS process limits
+      // Process in parallel batches of 5. High speed without crashing the OS scheduler.
       const resultsMap: Record<string, PingResult> = {};
       const batchSize = 5;
       
@@ -78,14 +82,9 @@ const App: React.FC = () => {
         batch.forEach((node, idx) => {
           resultsMap[node.id] = results[idx];
         });
-        
-        // Minor throttle between batches if monitoring a lot of IPs
-        if (monitoringNodes.length > batchSize) {
-          await new Promise(r => setTimeout(r, 100));
-        }
       }
 
-      // Single Atomic Update for all nodes
+      // Single Atomic State Update to minimize React re-renders
       setNodes(currentNodes => currentNodes.map(node => {
         const result = resultsMap[node.id];
         if (!result) return node;
@@ -112,14 +111,14 @@ const App: React.FC = () => {
         };
       }));
     } catch (err) {
-      console.error("Tick failed:", err);
+      console.error("Monitoring tick failed:", err);
     } finally {
       isUpdatingRef.current = false;
     }
   }, [getPingResult, maxDataPoints]);
 
   useEffect(() => {
-    // We use a stable interval that doesn't reset when nodes change
+    // Stable timer that only resets if the interval duration itself changes
     const timer = setInterval(runMonitoringTick, settings.interval * 1000);
     return () => clearInterval(timer);
   }, [runMonitoringTick, settings.interval]);
@@ -132,7 +131,7 @@ const App: React.FC = () => {
       id: Math.random().toString(36).substr(2, 9),
       ip, 
       label: ip, 
-      hostname: 'Local Target', 
+      hostname: 'Network Target', 
       isResolving: false,
       history: [], 
       downtimeEvents: [], 
@@ -165,19 +164,19 @@ const App: React.FC = () => {
       <main className="flex-1 overflow-y-auto p-4 space-y-4">
         <section className={`border rounded-xl p-3 flex flex-col md:flex-row gap-3 items-center ${theme === 'dark' ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200'}`}>
           <div className="flex-1 flex flex-col">
-            <span className="text-[10px] text-slate-500 uppercase font-bold mb-1 ml-1">Targets (Subnets, Ranges, or Single IP)</span>
+            <span className="text-[10px] text-slate-500 uppercase font-bold mb-1 ml-1">Targets (IPs, Subnets/24, or Ranges x-y)</span>
             <input 
               type="text" 
               value={bulkInput} 
               onChange={e => setBulkInput(e.target.value)}
-              placeholder="e.g. 8.8.8.8, 192.168.1.1-50, 10.0.0.0/24"
+              placeholder="e.g. 8.8.8.8, 192.168.1.1-20, 10.0.0.0/24"
               className={`w-full rounded-lg px-4 py-2 text-sm mono outline-none focus:ring-2 focus:ring-blue-500 ${theme === 'dark' ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-200'}`}
               onKeyDown={e => e.key === 'Enter' && handleAddIPs()}
             />
           </div>
           <div className="flex items-end gap-3 mt-4 md:mt-0">
             <button onClick={handleAddIPs} className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2 rounded-lg text-xs uppercase transition-all shadow-lg shrink-0">
-              <i className="fas fa-plus mr-2"></i> Start Monitor
+              <i className="fas fa-plus mr-2"></i> Deploy Monitor
             </button>
             <div className="flex gap-2 border-l border-slate-800 pl-3 shrink-0">
                <button onClick={() => setViewMode('table')} className={`p-2 rounded-lg transition-all ${viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-800'}`} title="Table View"><i className="fas fa-list"></i></button>
@@ -189,8 +188,8 @@ const App: React.FC = () => {
         <div className="flex-1">
           {nodes.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-slate-500">
-               <i className="fas fa-network-wired text-4xl mb-4 opacity-20"></i>
-               <p className="text-sm">No active monitors. Enter an IP or subnet above to begin.</p>
+               <i className="fas fa-satellite-dish text-4xl mb-4 opacity-20"></i>
+               <p className="text-sm">Ready for deployment. Enter network targets to start monitoring.</p>
             </div>
           ) : viewMode === 'table' ? (
             <SummaryTable 
@@ -209,7 +208,7 @@ const App: React.FC = () => {
                  ) : null;
                })}
                {activeGraphedIds.length === 0 && (
-                 <div className="col-span-full py-20 text-center text-slate-500 italic">Select a node from the list to view its dashboard focus.</div>
+                 <div className="col-span-full py-20 text-center text-slate-500 italic">Select a target from the list to initialize focus view.</div>
                )}
              </div>
           ) : (
