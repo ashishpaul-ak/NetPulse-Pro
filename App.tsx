@@ -21,13 +21,11 @@ const App: React.FC = () => {
   const [settings, setSettings] = useState<MonitorSettings>({
     interval: 2.0,
     warningThreshold: 150,
-    timeframe: 120, // 120 minutes as requested
+    timeframe: 120, // 120 minutes timeframe
     statusColors: { alive: '#10b981', unstable: '#f59e0b', dead: '#ef4444' }
   });
 
-  // Performance optimized ref to track if a tick is already running
   const isUpdatingRef = useRef(false);
-  // Ref to track nodes for the interval to avoid expensive dependency array updates
   const nodesRef = useRef<IPNode[]>([]);
   
   useEffect(() => {
@@ -35,6 +33,7 @@ const App: React.FC = () => {
   }, [nodes]);
 
   const maxDataPoints = useMemo(() => {
+    // 120 minutes * 60 seconds / interval
     return Math.floor((settings.timeframe * 60) / settings.interval);
   }, [settings.timeframe, settings.interval]);
 
@@ -48,11 +47,9 @@ const App: React.FC = () => {
           status: res.status === 'dead' ? 'dead' : (res.rtt > settings.warningThreshold ? 'unstable' : 'alive')
         };
       } catch (e) {
-        console.error("Ping Error:", e);
         return { timestamp: Date.now(), rtt: 0, status: 'dead' };
       }
     }
-    // Simulation fallback for web preview
     const rtt = 10 + Math.random() * 40;
     return { 
       timestamp: Date.now(), 
@@ -61,9 +58,7 @@ const App: React.FC = () => {
     };
   }, [settings.warningThreshold]);
 
-  // STABLE MONITORING TICK: Uses batching to prevent CPU spikes
   const runMonitoringTick = useCallback(async () => {
-    // Prevention: If a tick is still running, skip this one. This prevents process piling.
     if (isUpdatingRef.current || nodesRef.current.length === 0) return;
     
     const monitoringNodes = nodesRef.current.filter(n => n.isMonitoring);
@@ -72,9 +67,8 @@ const App: React.FC = () => {
     isUpdatingRef.current = true;
 
     try {
-      // Process in parallel batches of 5. High speed without crashing the OS scheduler.
       const resultsMap: Record<string, PingResult> = {};
-      const batchSize = 5;
+      const batchSize = 5; // STRICT BATCHING TO PREVENT SYSTEM CRASH
       
       for (let i = 0; i < monitoringNodes.length; i += batchSize) {
         const batch = monitoringNodes.slice(i, i + batchSize);
@@ -84,7 +78,6 @@ const App: React.FC = () => {
         });
       }
 
-      // Single Atomic State Update to minimize React re-renders
       setNodes(currentNodes => currentNodes.map(node => {
         const result = resultsMap[node.id];
         if (!result) return node;
@@ -110,15 +103,12 @@ const App: React.FC = () => {
           avgRtt
         };
       }));
-    } catch (err) {
-      console.error("Monitoring tick failed:", err);
     } finally {
       isUpdatingRef.current = false;
     }
   }, [getPingResult, maxDataPoints]);
 
   useEffect(() => {
-    // Stable timer that only resets if the interval duration itself changes
     const timer = setInterval(runMonitoringTick, settings.interval * 1000);
     return () => clearInterval(timer);
   }, [runMonitoringTick, settings.interval]);
@@ -164,7 +154,7 @@ const App: React.FC = () => {
       <main className="flex-1 overflow-y-auto p-4 space-y-4">
         <section className={`border rounded-xl p-3 flex flex-col md:flex-row gap-3 items-center ${theme === 'dark' ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200'}`}>
           <div className="flex-1 flex flex-col">
-            <span className="text-[10px] text-slate-500 uppercase font-bold mb-1 ml-1">Targets (IPs, Subnets/24, or Ranges x-y)</span>
+            <span className="text-[10px] text-slate-500 uppercase font-bold mb-1 ml-1">Deploy Targets (IPs, Subnets, Ranges)</span>
             <input 
               type="text" 
               value={bulkInput} 
@@ -174,13 +164,13 @@ const App: React.FC = () => {
               onKeyDown={e => e.key === 'Enter' && handleAddIPs()}
             />
           </div>
-          <div className="flex items-end gap-3 mt-4 md:mt-0">
+          <div className="flex items-end gap-3">
             <button onClick={handleAddIPs} className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2 rounded-lg text-xs uppercase transition-all shadow-lg shrink-0">
-              <i className="fas fa-plus mr-2"></i> Deploy Monitor
+              <i className="fas fa-satellite mr-2"></i> Deploy
             </button>
             <div className="flex gap-2 border-l border-slate-800 pl-3 shrink-0">
-               <button onClick={() => setViewMode('table')} className={`p-2 rounded-lg transition-all ${viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-800'}`} title="Table View"><i className="fas fa-list"></i></button>
-               <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-800'}`} title="Grid View"><i className="fas fa-th"></i></button>
+               <button onClick={() => setViewMode('table')} className={`p-2 rounded-lg transition-all ${viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-800'}`}><i className="fas fa-list"></i></button>
+               <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-800'}`}><i className="fas fa-th"></i></button>
             </div>
           </div>
         </section>
@@ -188,8 +178,8 @@ const App: React.FC = () => {
         <div className="flex-1">
           {nodes.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-slate-500">
-               <i className="fas fa-satellite-dish text-4xl mb-4 opacity-20"></i>
-               <p className="text-sm">Ready for deployment. Enter network targets to start monitoring.</p>
+               <i className="fas fa-terminal text-4xl mb-4 opacity-10"></i>
+               <p className="text-xs uppercase tracking-widest font-bold">Terminal Idle. Waiting for Target Injection.</p>
             </div>
           ) : viewMode === 'table' ? (
             <SummaryTable 
@@ -207,9 +197,6 @@ const App: React.FC = () => {
                    <DiagnosticPanel key={id} node={node} theme={theme} settings={settings} onClose={() => setActiveGraphedIds(prev => prev.filter(gid => gid !== id))} onUpdateName={(name) => setNodes(ns => ns.map(n => n.id === id ? {...n, customName: name} : n))} onTrace={() => {}} />
                  ) : null;
                })}
-               {activeGraphedIds.length === 0 && (
-                 <div className="col-span-full py-20 text-center text-slate-500 italic">Select a target from the list to initialize focus view.</div>
-               )}
              </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
