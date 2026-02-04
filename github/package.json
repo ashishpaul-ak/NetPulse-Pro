@@ -1,0 +1,33 @@
+
+{
+  "name": "netpulse-pro",
+  "version": "3.0.0",
+  "description": "Professional Network Diagnostic Terminal",
+  "author": "Network Admin",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --windows"
+  },
+  "devDependencies": {
+    "electron": "^25.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId": "com.netpulse.pro",
+    "productName": "NetPulsePro",
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!dist/*"
+    ]
+  }
+}
